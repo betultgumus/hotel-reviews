@@ -43,13 +43,14 @@ GOOGLE_TRAVEL_URL = (
     "&ved=0CAAQ5JsGahcKEwiYv8rbv7uWAxUAAAAAHQAAAAAQAw"
 )
 
+# url değiştirilirse kaydedilecek .csv adı da değiştirilmelidir
 CSV_DOSYASI = Path(__file__).with_name("yorum.csv")
 SAYFA_ACILIS_BEKLEMESI = 3
 KAYDIRMA_BEKLEMESI = 2
 SONDA_BOS_KAYDIRMA_LIMITI = 3
 VARSAYILAN_MAKSIMUM_YORUM = 0  # 0: sinir yok
 
-CSV_ALANLARI = ("otel_adi", "yorum", "hizmet", "tarih")
+CSV_ALANLARI = ("otel_adi", "yorum", "hizmet", "tarih", "puan")
 
 
 @dataclass(frozen=True)
@@ -58,6 +59,7 @@ class YorumKaydi:
     yorum: str
     hizmet: str
     tarih: str
+    puan: str
 
 
 def metni_temizle(metin: str) -> str:
@@ -113,12 +115,14 @@ class AnindaCsvYazici:
                         "yorum": satir.get("yorum", ""),
                         "hizmet": satir.get("hizmet", ""),
                         "tarih": satir.get("tarih", "") or "",
+                        "puan": satir.get("puan", "") or "",
                     }
                     kayit = YorumKaydi(
                         normal_satir["otel_adi"],
                         normal_satir["yorum"],
                         normal_satir["hizmet"],
                         normal_satir["tarih"],
+                        normal_satir["puan"],
                     )
                     anahtar = kayit_anahtari(kayit)
                     if anahtar not in anahtarlar:
@@ -153,8 +157,14 @@ class AnindaCsvYazici:
         anahtar = kayit_anahtari(kayit)
         if anahtar in self.mevcut_anahtarlar:
             indeks = self._anahtar_indeksi[anahtar]
+            guncellendi = False
             if kayit.tarih and not self._satirlar[indeks].get("tarih"):
                 self._satirlar[indeks]["tarih"] = kayit.tarih
+                guncellendi = True
+            if kayit.puan and not self._satirlar[indeks].get("puan"):
+                self._satirlar[indeks]["puan"] = kayit.puan
+                guncellendi = True
+            if guncellendi:
                 self._csvyi_yeniden_yaz()
                 return "guncellendi"
             return "ayni"
@@ -164,6 +174,7 @@ class AnindaCsvYazici:
             "yorum": kayit.yorum,
             "hizmet": kayit.hizmet,
             "tarih": kayit.tarih,
+            "puan": kayit.puan,
         }
         self._yazici.writerow(satir)
         self._diske_yaz()
@@ -325,7 +336,13 @@ def karttan_kayit_al(kart: WebElement, otel_adi: str) -> YorumKaydi | None:
 
     if not yorum:
         return None
-    return YorumKaydi(otel_adi=otel_adi, yorum=yorum, hizmet=hizmet, tarih="")
+    return YorumKaydi(
+        otel_adi=otel_adi,
+        yorum=yorum,
+        hizmet=hizmet,
+        tarih="",
+        puan="",
+    )
 
 
 def yorum_listesi_imzasi(driver: webdriver.Chrome) -> str:
@@ -472,13 +489,15 @@ def karttan_kayit_al_guvenli(
         hizmet = metni_temizle(ayrintilar[0].text) if ayrintilar else ""
         tarihler = kart.find_elements(By.CSS_SELECTOR, "span.iUtr1.CQYfx")
         tarih = metni_temizle(tarihler[0].text) if tarihler else ""
+        puanlar = kart.find_elements(By.CSS_SELECTOR, "div.GDWaad")
+        puan = metni_temizle(puanlar[0].text) if puanlar else ""
         yorum = yorum_metnini_al(kart, hizmet)
     except StaleElementReferenceException:
         return None
 
     if not yorum:
         return None
-    return YorumKaydi(otel_adi, yorum, hizmet, tarih)
+    return YorumKaydi(otel_adi, yorum, hizmet, tarih, puan)
 
 
 def sayfayi_artimli_kaydir(driver: webdriver.Chrome) -> bool:
